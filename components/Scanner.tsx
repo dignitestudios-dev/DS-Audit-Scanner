@@ -36,6 +36,7 @@ interface Insights {
   };
 }
 interface Result {
+  scanId: string;
   url: string;
   finalUrl: string;
   scannedAt: string;
@@ -101,6 +102,9 @@ export default function Scanner() {
   const [codeError, setCodeError] = useState("");
   const [result, setResult] = useState<Result | null>(null);
   const [scanned, setScanned] = useState("");
+  const [unlocking, setUnlocking] = useState(false);
+  const [codeOpen, setCodeOpen] = useState(false);
+  const [formCode, setFormCode] = useState("");
   const abort = useRef<AbortController | null>(null);
   const runId = useRef(0);
   const lastTarget = useRef("");
@@ -127,7 +131,7 @@ export default function Scanner() {
     };
   }, [scanning]);
 
-  const run = useCallback(async (target: string, code?: string) => {
+  const run = useCallback(async (target: string, code?: string, fromForm = false) => {
     // Cancel anything still in flight and make sure only this run may touch state.
     abort.current?.abort();
     const ctl = new AbortController();
@@ -155,7 +159,7 @@ export default function Scanner() {
       const j = await r.json();
       if (!current()) return;
       if (!r.ok) {
-        if (code) setCodeError(j.error ?? "Something went wrong.");
+        if (code && !fromForm) setCodeError(j.error ?? "Something went wrong.");
         else {
           setResult(null);
           setError(j.error ?? "Something went wrong.");
@@ -168,7 +172,7 @@ export default function Scanner() {
       setResult(j as Result);
       setScanned(target);
       requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
-      if (code && (j as Result).unlocked) {
+      if (code && fromForm && (j as Result).unlocked) {
         savePdf(j as Result).catch(() => setCodeError("Report unlocked, but the PDF couldn't be created. Use the Download button to try again."));
       }
     } catch (e) {
@@ -177,7 +181,7 @@ export default function Scanner() {
         ? "The scan took too long and was stopped. The site may be slow or blocking us. Please try again."
         : "Couldn't reach the scanner. Check your connection and try again.";
       if ((e as Error).name !== "AbortError" || timedOut) {
-        if (code) setCodeError(msg);
+        if (code && !fromForm) setCodeError(msg);
         else setError(msg);
       }
     } finally {
@@ -202,6 +206,37 @@ export default function Scanner() {
     return () => clearTimeout(id);
   }, [initial, run]);
 
+  // Unlock the scan we already have: no loader, no new scan.
+  async function unlock(code: string) {
+    if (!result || unlocking) return;
+    setUnlocking(true);
+    setCodeError("");
+    try {
+      const r = await fetch("/api/scan", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scanId: result.scanId, code }),
+      });
+      const j = await r.json();
+      if (r.status === 410) {
+        // Server no longer holds this scan (restart or expiry): scan again with the code.
+        setUnlocking(false);
+        run(scanned, code);
+        return;
+      }
+      if (!r.ok) {
+        setCodeError(j.error ?? "Something went wrong.");
+        return;
+      }
+      setResult(j as Result);
+      savePdf(j as Result).catch(() => setCodeError("Report unlocked, but the PDF couldn't be created. Use the Download button to try again."));
+    } catch {
+      setCodeError("Couldn't reach the scanner. Check your connection and try again.");
+    } finally {
+      setUnlocking(false);
+    }
+  }
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (scanning || !url.trim()) return;
@@ -209,7 +244,7 @@ export default function Scanner() {
     lastTarget.current = target;
     window.history.replaceState(null, "", `?url=${encodeURIComponent(target)}`);
     setResult(null);
-    run(target);
+    run(target, codeOpen && formCode.trim() ? formCode.trim() : undefined, true);
   }
 
   return (
@@ -237,6 +272,28 @@ export default function Scanner() {
           </svg>
         </button>
       </form>
+      {codeOpen ? (
+        <div className="pre-code">
+          <label htmlFor="pre-code" className="sr">
+            Access code
+          </label>
+          <input
+            id="pre-code"
+            value={formCode}
+            onChange={(e) => setFormCode(e.target.value)}
+            placeholder="Access code (optional)"
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+            maxLength={64}
+          />
+          <p className="muted">Enter it, then press Scan to get the full report and PDF straight away.</p>
+        </div>
+      ) : (
+        <button type="button" className="link pre-link" onClick={() => setCodeOpen(true)}>
+          Have an access code?
+        </button>
+      )}
       {error && (
         <p className="error" role="alert">
           {error}
@@ -246,7 +303,7 @@ export default function Scanner() {
       {scanning && <Loader url={scanned && result ? scanned : url} elapsed={elapsed} finishing={finishing} onCancel={() => abort.current?.abort()} />}
 
       {result && (
-        <Report result={result} scannedUrl={scanned} refEl={resultRef} codeError={codeError} busy={scanning} onUnlock={(code) => run(scanned, code)} />
+        <Report result={result} scannedUrl={scanned} refEl={resultRef} codeError={codeError} busy={scanning || unlocking} onUnlock={unlock} />
       )}
     </>
   );
