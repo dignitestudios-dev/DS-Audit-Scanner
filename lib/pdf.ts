@@ -16,7 +16,6 @@ export interface PdfData {
   scores: Record<"overall" | "security" | "https" | "speed" | "mobile" | "seo" | "access", number>;
   counts: Record<"high" | "medium" | "low", number>;
   findings: PdfFinding[];
-  summary: string | null;
   usedPageSpeed: boolean;
   insights: {
     tech: string[];
@@ -250,7 +249,6 @@ export async function downloadReport(d: PdfData): Promise<void> {
   const best = ranked[0];
   const worst = ranked[ranked.length - 1];
   const top = d.findings.slice(0, 3).map((f) => f.title);
-  if (d.summary) para(d.summary, { gap: 8 });
   para(
     `${host} scored ${d.scores.overall} out of 100 in our automated scan. We found ${total} issue${total === 1 ? "" : "s"} across six areas: ${d.counts.high} high, ${d.counts.medium} medium and ${d.counts.low} low priority. The strongest area is ${best[1].toLowerCase()} (${d.scores[best[0]]}/100) and the weakest is ${worst[1].toLowerCase()} (${d.scores[worst[0]]}/100).`,
   );

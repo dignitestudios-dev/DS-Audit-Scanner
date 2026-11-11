@@ -1,5 +1,4 @@
 import { accessEnabled, makeLimiter, validCode } from "@/lib/access";
-import { aiSummary } from "@/lib/ai";
 import { EFFORT, FIXES } from "@/lib/fixes";
 import { bySeverity, scanUrl, type Category, type Finding } from "@/lib/scan";
 import { ScanError } from "@/lib/ssrf";
@@ -57,13 +56,6 @@ export async function POST(req: Request) {
       perCategory[f.category]++;
     }
 
-    const summary = await aiSummary({
-      host: new URL(result.finalUrl).hostname,
-      overall: result.scores.overall,
-      scores: result.scores,
-      issues: sorted.map((f) => ({ severity: f.severity, title: f.title })),
-    });
-
     const pick = ({ id, category, severity, title, detail }: Finding) => ({ id, category, severity, title, detail });
 
     // Gate: without a valid code only the teaser findings leave the server.
@@ -81,7 +73,6 @@ export async function POST(req: Request) {
       findings: unlocked ? sorted.map((f) => ({ ...pick(f), fix: FIXES[f.id] ?? null, effort: EFFORT[f.id] ?? "Low" })) : undefined,
       lockedCount: unlocked ? 0 : Math.max(0, sorted.length - TEASER_COUNT),
       usedPageSpeed: result.usedPageSpeed,
-      summary,
       insights: {
         ...result.insights,
         opportunities: unlocked ? result.insights.opportunities : result.insights.opportunities.slice(0, 3),

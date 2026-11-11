@@ -1,6 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
+import { AUDIT_URL, CONTACT_EMAIL as EMAIL, CONTACT_PHONE as PHONE, CONTACT_PHONE_DISPLAY } from "@/lib/config";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type Sev = "high" | "medium" | "low";
@@ -46,13 +47,9 @@ interface Result {
   teaser: Finding[];
   findings?: Finding[];
   lockedCount: number;
-  summary: string | null;
   insights: Insights;
 }
 
-const AUDIT_URL = process.env.NEXT_PUBLIC_AUDIT_URL ?? "https://dignitestudios.net";
-const EMAIL = process.env.NEXT_PUBLIC_CONTACT_EMAIL ?? "info@dignitestudios.com";
-const PHONE = process.env.NEXT_PUBLIC_CONTACT_PHONE ?? "+18777141770";
 
 const CATS: { key: keyof Result["scores"]; label: string }[] = [
   { key: "security", label: "Security" },
@@ -88,10 +85,9 @@ async function savePdf(r: Result): Promise<void> {
     scores: r.scores,
     counts: r.counts,
     findings: r.findings ?? r.teaser,
-    summary: r.summary,
     usedPageSpeed: r.usedPageSpeed,
     insights: r.insights,
-    contact: { email: EMAIL, phone: PHONE.replace(/^\+1(\d{3})(\d{3})(\d{4})$/, "+1 $1 $2 $3"), site: AUDIT_URL },
+    contact: { email: EMAIL, phone: CONTACT_PHONE_DISPLAY, site: AUDIT_URL },
   });
 }
 
@@ -372,8 +368,6 @@ function Report({
           {result.unlocked && <DownloadButton result={result} />}
         </div>
       </div>
-
-      {result.summary && <p className="summary">{result.summary}</p>}
 
       <ul className="cats">
         {CATS.map((c, i) => (
